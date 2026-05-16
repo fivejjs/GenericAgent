@@ -17,9 +17,7 @@ logger = logging.getLogger(__name__)
 
 os.environ.setdefault(
     "GA_LANG",
-    "zh"
-    if any(k in (locale.getlocale()[0] or "").lower() for k in ("zh", "chinese"))
-    else "en",
+    "zh" if any(k in (locale.getlocale()[0] or "").lower() for k in ("zh", "chinese")) else "en",
 )
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
@@ -31,15 +29,15 @@ elif hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(errors="replace")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from agent_loop import agent_runner_loop
-from ga import (
+from agent_loop import agent_runner_loop  # noqa: E402
+from ga import (  # noqa: E402
     GenericAgentHandler,
     consume_file,
     format_error,
     get_global_memory,
     smart_format,
 )
-from llmcore import (
+from llmcore import (  # noqa: E402
     MixinSession,
     NativeClaudeSession,
     NativeOAISession,
@@ -60,9 +58,7 @@ def load_tool_schema(suffix=""):
         encoding="utf-8",
     ) as f:
         TS = f.read()
-    TOOLS_SCHEMA = json.loads(
-        TS if os.name == "nt" else TS.replace("powershell", "bash")
-    )
+    TOOLS_SCHEMA = json.loads(TS if os.name == "nt" else TS.replace("powershell", "bash"))
 
 
 load_tool_schema()
@@ -89,13 +85,9 @@ if not os.path.exists(cdp_cfg):
     try:
         os.makedirs(os.path.dirname(cdp_cfg), exist_ok=True)
         with open(cdp_cfg, "w", encoding="utf-8") as f:
-            f.write(
-                f"const TID = '__ljq_{hex(random.randint(0, 99999999))[2:8]}';"
-            )
+            f.write(f"const TID = '__ljq_{hex(random.randint(0, 99999999))[2:8]}';")
     except Exception as e:
-        logger.info(
-            f"[WARN] CDP config init failed: {e} — advanced web features (tmwebdriver) will be unavailable."
-        )
+        logger.info(f"[WARN] CDP config init failed: {e} — advanced web features (tmwebdriver) will be unavailable.")
 
 
 def get_system_prompt():
@@ -153,20 +145,14 @@ class GenericAgent:
             if isinstance(s, dict) and "mixin_cfg" in s:
                 try:
                     mixin = MixinSession(llm_sessions, s["mixin_cfg"])
-                    if isinstance(
-                        mixin._sessions[0], (NativeClaudeSession, NativeOAISession)
-                    ):
+                    if isinstance(mixin._sessions[0], (NativeClaudeSession, NativeOAISession)):
                         llm_sessions[i] = NativeToolClient(mixin)
                     else:
                         llm_sessions[i] = ToolClient(mixin)
                 except Exception as e:
-                    logger.info(
-                        f"\n\n\n[ERROR] Failed to init MixinSession with cfg {s['mixin_cfg']}: {e}!!!\n\n"
-                    )
+                    logger.info(f"\n\n\n[ERROR] Failed to init MixinSession with cfg {s['mixin_cfg']}: {e}!!!\n\n")
         # Remove failed mixin dicts (not replaced by a real session above)
-        llm_sessions = [
-            s for s in llm_sessions if not (isinstance(s, dict) and "mixin_cfg" in s)
-        ]
+        llm_sessions = [s for s in llm_sessions if not (isinstance(s, dict) and "mixin_cfg" in s)]
         if not llm_sessions:
             raise RuntimeError(
                 "[FATAL] No valid LLM sessions. Check mykey.py: mixin name must match a configured session name."
@@ -194,10 +180,7 @@ class GenericAgent:
 
     def list_llms(self):
         self.load_llm_sessions()
-        return [
-            (i, self.get_llm_name(b), i == self.llm_no)
-            for i, b in enumerate(self.llmclients)
-        ]
+        return [(i, self.get_llm_name(b), i == self.llm_no) for i, b in enumerate(self.llmclients)]
 
     def get_llm_name(self, b=None, model=False):
         b = self.llmclient if b is None else b
@@ -244,9 +227,7 @@ class GenericAgent:
             setattr(self.llmclient.backend, k, v)
             display_queue.put(
                 {
-                    "done": smart_format(
-                        f"✅ session.{k} = {repr(v)}", max_str_len=500
-                    ),
+                    "done": smart_format(f"✅ session.{k} = {repr(v)}", max_str_len=500),
                     "source": "system",
                 }
             )
@@ -271,14 +252,12 @@ class GenericAgent:
             rquery = smart_format(raw_query.replace("\n", " "), max_str_len=200)
             self.history.append(f"[USER]: {rquery}")
 
-            sys_prompt = get_system_prompt() + getattr(
-                self.llmclient.backend, "extra_sys_prompt", ""
-            )
+            sys_prompt = get_system_prompt() + getattr(self.llmclient.backend, "extra_sys_prompt", "")
             if self.peer_hint:
-                sys_prompt += "\n[Peer] 用户提及其他会话/后台任务状态时: temp/model_responses/ (只找近期修改的文件尾部)\n"
-            handler = GenericAgentHandler(
-                self, self.history, os.path.join(script_dir, "temp")
-            )
+                sys_prompt += (
+                    "\n[Peer] 用户提及其他会话/后台任务状态时: temp/model_responses/ (只找近期修改的文件尾部)\n"
+                )
+            handler = GenericAgentHandler(self, self.history, os.path.join(script_dir, "temp"))
             if self.handler and "key_info" in self.handler.working:
                 ki = re.sub(
                     r"\n\[SYSTEM\] 此为.*?工作记忆[。\n]*",
@@ -286,9 +265,7 @@ class GenericAgent:
                     self.handler.working["key_info"],
                 )  # 去旧
                 handler.working["key_info"] = ki
-                handler.working["passed_sessions"] = ps = (
-                    self.handler.working.get("passed_sessions", 0) + 1
-                )
+                handler.working["passed_sessions"] = ps = self.handler.working.get("passed_sessions", 0) + 1
                 if ps > 0:
                     handler.working["key_info"] += (
                         f"\n[SYSTEM] 此为 {ps} 个对话前设置的key_info，若已在新任务，先更新或清除工作记忆。\n"
@@ -316,9 +293,7 @@ class GenericAgent:
                     if len(full_resp) - last_pos > 50 or "LLM Running" in chunk:
                         display_queue.put(
                             {
-                                "next": full_resp[last_pos:]
-                                if self.inc_out
-                                else full_resp,
+                                "next": full_resp[last_pos:] if self.inc_out else full_resp,
                                 "source": source,
                             }
                         )
@@ -371,21 +346,13 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--nobg", action="store_true")
     args, _unknown = parser.parse_known_args()
-    _reflect_args = (
-        dict(zip([k.lstrip("-") for k in _unknown[::2]], _unknown[1::2]))
-        if _unknown
-        else {}
-    )
+    _reflect_args = dict(zip([k.lstrip("-") for k in _unknown[::2]], _unknown[1::2])) if _unknown else {}
 
     if args.task and not args.nobg:
         import platform
         import subprocess
 
-        cmd = (
-            [sys.executable, os.path.abspath(__file__)]
-            + [a for a in sys.argv[1:]]
-            + ["--nobg"]
-        )
+        cmd = [sys.executable, os.path.abspath(__file__)] + [a for a in sys.argv[1:]] + ["--nobg"]
         d = os.path.join(script_dir, f"temp/{args.task}")
         os.makedirs(d, exist_ok=True)
         p = subprocess.Popen(
@@ -445,10 +412,7 @@ if __name__ == "__main__":
         if hasattr(mod, "init"):
             mod.init(_reflect_args)
         _mt = os.path.getmtime(args.reflect)
-        logger.info(
-            f"[Reflect] loaded {args.reflect}"
-            + (f" args={_reflect_args}" if _reflect_args else "")
-        )
+        logger.info(f"[Reflect] loaded {args.reflect}" + (f" args={_reflect_args}" if _reflect_args else ""))
         while True:
             if os.path.getmtime(args.reflect) != _mt:
                 try:

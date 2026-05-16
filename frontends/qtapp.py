@@ -707,7 +707,7 @@ class _MsgRow(QWidget):
                     time_lbl = QLabel(dt.strftime("%Y-%m-%d %H:%M"))
                     time_lbl.setStyleSheet("color: #a1a1aa; font-size: 11px; background: transparent;")
                     alayout.addWidget(time_lbl)
-                except:
+                except Exception:
                     pass
 
             self._action_row.hide()
@@ -791,7 +791,7 @@ class _MsgRow(QWidget):
                     time_lbl = QLabel(dt.strftime("%Y-%m-%d %H:%M"))
                     time_lbl.setStyleSheet("color: #a1a1aa; font-size: 11px; background: transparent;")
                     alayout.addWidget(time_lbl)
-                except:
+                except Exception:
                     pass
 
             self._action_row.hide()

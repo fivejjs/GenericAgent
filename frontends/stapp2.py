@@ -3,9 +3,9 @@ import html
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 try: sys.stdout.reconfigure(errors='replace')
-except: pass
+except Exception: pass
 try: sys.stderr.reconfigure(errors='replace')
-except: pass
+except Exception: pass
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st

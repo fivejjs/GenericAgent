@@ -41,7 +41,7 @@ if _lf:
             ds = s[5:].lstrip()
             if ds == '[DONE]': continue
             try: evt = _j.loads(ds)
-            except: continue
+            except Exception: continue
             if evt.get('type') == 'message_start':
                 us = evt.get('message', {}).get('usage', {}) or {}
                 u['input'] = us.get('input_tokens', u.get('input', 0))

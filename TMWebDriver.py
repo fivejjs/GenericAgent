@@ -1,5 +1,14 @@
-import json, threading, time, uuid, queue, socket, requests, traceback
+import json
+import logging
+import threading
+import time
+import uuid
+import queue
+import socket
+import requests
+import traceback
 from typing import Any
+logger = logging.getLogger(__name__)
 from simple_websocket_server import WebSocketServer, WebSocket
 import bottle
 from bottle import request
@@ -29,13 +38,14 @@ class Session:
         self.connect_at = time.time()
         self.disconnect_at = None
     def mark_disconnected(self):
-        if self.is_active(): print(f"Tab disconnected: {self.url} (Session: {self.id})")
+        if self.is_active(): logger.info(f"Tab disconnected: {self.url} (Session: {self.id})")
         self.disconnect_at = time.time()
 
 
 class TMWebDriver:  
     def __init__(self, host: str = '127.0.0.1', port: int = 18765):  
         self.host, self.port = host, port
+        self._lock = threading.Lock()
         self.sessions, self.results, self.acks = {}, {}, {}
         self.default_session_id = None  
         self.latest_session_id = None  
@@ -56,7 +66,7 @@ class TMWebDriver:
             session_info = {'url': data.get('url'), 'title': data.get('title', ''), 'type': 'http'}  
             if session_id not in self.sessions: 
                 session = Session(session_id, session_info, queue.Queue())
-                print(f"Browser http connected: {session.url} (Session: {session_id})")  
+                logger.info(f"Browser http connected: {session.url} (Session: {session_id})")  
                 self.sessions[session_id] = session
             session = self.sessions[session_id]
             if session.disconnect_at is not None and session.type != 'http': session.reconnect(queue.Queue(), session_info)
@@ -95,7 +105,7 @@ class TMWebDriver:
                 timeout = float(data.get('timeout', 10.0))
                 try:
                     result = self.execute_js(code, timeout=timeout, session_id=session_id)
-                    print('[remote result]', (str(code)[:50] + ' RESULT:' +str(result)[:50]).replace('\n', ' '))
+                    logger.info('[remote result]', (str(code)[:50] + ' RESULT:' +str(result)[:50]).replace('\n', ' '))
                     return json.dumps({'r': result}, ensure_ascii=False)
                 except Exception as e:
                     return json.dumps({'r': {'error': str(e)}}, ensure_ascii=False)
@@ -122,16 +132,20 @@ class TMWebDriver:
         class JSExecutor(WebSocket):  
             def handle(self) -> None:  
                 try:  
-                    data = json.loads(self.data)  
-                    if data.get('type') == 'ready':  
+                    data = json.loads(self.data)
+                    if not isinstance(data, dict) or 'type' not in data:
+                        logger.warning(f"[WARN] Invalid WS message: missing 'type' field: {str(data)[:200]}")
+                        return
+                    msg_type = data.get('type')
+                    if msg_type == 'ready':  
                         session_id = data.get('sessionId')  
                         session_info = {'url': data.get('url'), 'title': data.get('title', ''),
                             'connected_at': time.time(), 'type': 'ws'}  
                         driver._register_client(session_id, self, session_info)  
-                    elif data.get('type') in ['ext_ready', 'tabs_update']:
+                    elif msg_type in ['ext_ready', 'tabs_update']:
                         tabs = data.get('tabs', [])
                         current_tab_ids = {str(tab['id']) for tab in tabs}
-                        print(f"Received tabs update: {current_tab_ids}")
+                        logger.info(f"Received tabs update: {current_tab_ids}")
                         for sid in list(driver.sessions.keys()):
                             sess = driver.sessions[sid]
                             if sess.type == 'ext_ws' and sid not in current_tab_ids:
@@ -142,65 +156,69 @@ class TMWebDriver:
                             sess = driver.sessions.get(session_id)
                             if sess and sess.is_active(): sess.info = session_info
                             else: driver._register_client(session_id, self, session_info)
-                    elif data.get('type') == 'ack': driver.acks[data.get('id','')] = True
-                    elif data.get('type') == 'result':  
-                        driver.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}  
-                    elif data.get('type') == 'error':  
-                        driver.results[data.get('id')] = {'success': False, 'data': data.get('error'), 'newTabs': data.get('newTabs', [])}  
+                    elif msg_type == 'ack':
+                        with driver._lock: driver.acks[data.get('id','')] = True
+                    elif msg_type == 'result':  
+                        with driver._lock: driver.results[data.get('id')] = {'success': True, 'data': data.get('result'), 'newTabs': data.get('newTabs', [])}  
+                    elif msg_type == 'error':  
+                        with driver._lock: driver.results[data.get('id')] = {'success': False, 'data': data.get('error'), 'newTabs': data.get('newTabs', [])}  
                 except Exception as e:  
-                    print(f"Error handling message: {e}")  
-                    if hasattr(self, 'data'): print(self.data)  
+                    logger.info(f"Error handling message: {e}")  
+                    if hasattr(self, 'data'): logger.info(self.data)  
             def connected(self): (f"New connection from {self.address}")  
             def handle_close(self): 
-                print(f"WS Connection closed: {self.address}")
+                logger.info(f"WS Connection closed: {self.address}")
                 driver._unregister_client(self)  
         
         self.server = WebSocketServer(self.host, self.port, JSExecutor)  
         server_thread = threading.Thread(target=self.server.serve_forever)  
         server_thread.daemon = True  
         server_thread.start()  
-        print(f"WebSocket server running on ws://{self.host}:{self.port}")  
+        logger.info(f"WebSocket server running on ws://{self.host}:{self.port}")  
     
     def _register_client(self, session_id: str, client: WebSocket, session_info) -> None:  
-        is_new_session = session_id not in self.sessions
+        with self._lock:
+            is_new_session = session_id not in self.sessions
 
-        if is_new_session:
-            session = Session(session_id, session_info, client)
-            self.sessions[session_id] = session            
-            print(f"New tab connected: {session.url} (Session: {session_id})")  
-        else:
-            session = self.sessions[session_id]
-            session.reconnect(client, session_info)
-            print(f"Tab reconnected: {session.url} (Session: {session_id})")  
+            if is_new_session:
+                session = Session(session_id, session_info, client)
+                self.sessions[session_id] = session            
+                logger.info(f"New tab connected: {session.url} (Session: {session_id})")  
+            else:
+                session = self.sessions[session_id]
+                session.reconnect(client, session_info)
+                logger.info(f"Tab reconnected: {session.url} (Session: {session_id})")  
 
-        self.latest_session_id = session_id
-        if self.default_session_id is None: self.default_session_id = session_id 
+            self.latest_session_id = session_id
+            if self.default_session_id is None: self.default_session_id = session_id 
     
     def _unregister_client(self, client: WebSocket) -> None:  
-        for session in self.sessions.values():
-            if session.ws_client == client: session.mark_disconnected()
+        with self._lock:
+            for session in self.sessions.values():
+                if session.ws_client == client: session.mark_disconnected()
     
     def execute_js(self, code, timeout=15, session_id=None) -> Any:  
         if session_id is None: session_id = self.default_session_id  
         if self.is_remote:
-            print('remote_execute_js')
+            logger.info('remote_execute_js')
             response = self._remote_cmd({"cmd": "execute_js", "sessionId": session_id, 
                                          "code": code, "timeout": str(timeout)}).get('r', {})
             if response.get('error'): raise Exception(response['error'])
             return response
  
-        session = self.sessions.get(session_id)
-        if not session or not session.is_active(): 
-            time.sleep(3)
+        with self._lock:
             session = self.sessions.get(session_id)
             if not session or not session.is_active(): 
-                alive_sessions = [s for s in self.sessions.values() if s.is_active()]
-                if alive_sessions:
-                    session = alive_sessions[0]  
-                    print(f"会话 {session_id} 未连接，自动切换到最新活动会话: {session.id}")
-                    session_id = self.default_session_id = session.id
+                time.sleep(3)
+                session = self.sessions.get(session_id)
                 if not session or not session.is_active(): 
-                    raise ValueError(f"会话ID {session_id} 未连接")  
+                    alive_sessions = [s for s in self.sessions.values() if s.is_active()]
+                    if alive_sessions:
+                        session = alive_sessions[0]  
+                        logger.info(f"会话 {session_id} 未连接，自动切换到最新活动会话: {session.id}")
+                        session_id = self.default_session_id = session.id
+                    if not session or not session.is_active(): 
+                        raise ValueError(f"会话ID {session_id} 未连接")  
 
         tp = session.type
         if tp not in ('ws', 'http', 'ext_ws'):
@@ -234,8 +252,9 @@ class TMWebDriver:
                     if acked: return {"result": f"Session {session_id} no response in {timeout}s (delivered but no result)"}
                     return {"result": f"Session {session_id} no response in {timeout}s (script not polled)"}
         
-        result = self.results.pop(exec_id)  
-        if exec_id in self.acks: self.acks.pop(exec_id)
+        with self._lock:
+            result = self.results.pop(exec_id)
+            if exec_id in self.acks: self.acks.pop(exec_id)
         if not result['success']: raise Exception(result['data'])  
         rr = {'data': result['data']}
         newtabs = result.get('newTabs', []); [x.pop('ts', None) for x in newtabs]
@@ -272,10 +291,10 @@ class TMWebDriver:
             matched = self._remote_cmd({"cmd": "find_session", "url_pattern": url_pattern}).get('r', [])
         else:
             matched = self.find_session(url_pattern)
-        if not matched: return print(f"警告: 未找到URL包含 '{url_pattern}' 的会话")  
-        if len(matched) > 1: print(f"警告: 找到多个URL包含 '{url_pattern}' 的会话，选择第一个")  
+        if not matched: return logger.info(f"警告: 未找到URL包含 '{url_pattern}' 的会话")  
+        if len(matched) > 1: logger.info(f"警告: 找到多个URL包含 '{url_pattern}' 的会话，选择第一个")  
         self.default_session_id, info = matched[0]
-        print(f"成功设置默认会话: {self.default_session_id}: {info['url']}")  
+        logger.info(f"成功设置默认会话: {self.default_session_id}: {info['url']}")  
         return self.default_session_id  
     
     def jump(self, url, timeout=10): self.execute_js(f"window.location.href='{url}'", timeout=timeout)

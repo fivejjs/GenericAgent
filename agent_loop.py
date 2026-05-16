@@ -1,6 +1,10 @@
-import json, re, os
+import json
+import logging
+import re
+import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Generator, Optional
+logger = logging.getLogger(__name__)
 @dataclass
 class StepOutcome:
     data: Any
@@ -12,14 +16,14 @@ def try_call_generator(func, *args, **kwargs):
     return ret
 
 class BaseHandler:
-    def tool_before_callback(self, tool_name, args, response): pass
-    def tool_after_callback(self, tool_name, args, response, ret): pass
-    def turn_end_callback(self, response, tool_calls, tool_results, turn, next_prompt, exit_reason): return next_prompt
-    def dispatch(self, tool_name, args, response, index=0, tool_num=1):
+    def tool_before_callback(self, tool_name: str, args: dict, response: Any): pass
+    def tool_after_callback(self, tool_name: str, args: dict, response: Any, ret: Any): pass
+    def turn_end_callback(self, response: Any, tool_calls: list, tool_results: list, turn: int, next_prompt: str, exit_reason: dict) -> str: return next_prompt
+    def dispatch(self, tool_name: str, args: dict, response: Any, index: int = 0, tool_num: int = 1):
         method_name = f"do_{tool_name}"
         if hasattr(self, method_name):
             args['_index'] = index; args['_tool_num'] = tool_num
-            prer = yield from try_call_generator(self.tool_before_callback, tool_name, args, response)
+            yield from try_call_generator(self.tool_before_callback, tool_name, args, response)
             ret = yield from try_call_generator(getattr(self, method_name), args, response)
             _ = yield from try_call_generator(self.tool_after_callback, tool_name, args, response, ret)
             return ret
@@ -28,18 +32,18 @@ class BaseHandler:
             yield f"未知工具: {tool_name}\n"
             return StepOutcome(None, next_prompt=f"未知工具 {tool_name}", should_exit=False)
 
-def json_default(o): return list(o) if isinstance(o, set) else str(o)
-def exhaust(g):
+def json_default(o: Any) -> Any: return list(o) if isinstance(o, set) else str(o)
+def exhaust(g: Generator) -> Any:
     try: 
         while True: next(g)
     except StopIteration as e: return e.value
 
-def get_pretty_json(data):
+def get_pretty_json(data: Any) -> str:
     if isinstance(data, dict) and "script" in data:
         data = data.copy(); data["script"] = data["script"].replace("; ", ";\n  ")
     return json.dumps(data, indent=2, ensure_ascii=False).replace('\\n', '\n')
 
-def agent_runner_loop(client, system_prompt, user_input, handler, tools_schema, max_turns=40, verbose=True, initial_user_content=None):
+def agent_runner_loop(client: Any, system_prompt: str, user_input: str, handler: BaseHandler, tools_schema: list, max_turns: int = 40, verbose: bool = True, initial_user_content: Optional[str] = None):
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": initial_user_content if initial_user_content is not None else user_input}

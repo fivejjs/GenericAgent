@@ -4,9 +4,9 @@ from urllib.parse import quote
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 try: sys.stdout.reconfigure(errors='replace')
-except: pass
+except Exception: pass
 try: sys.stderr.reconfigure(errors='replace')
-except: pass
+except Exception: pass
 script_dir = os.path.dirname(__file__)
 sys.path.append(os.path.abspath(os.path.join(script_dir, '..')))
 sys.path.append(os.path.abspath(script_dir))

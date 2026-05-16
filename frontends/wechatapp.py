@@ -344,7 +344,7 @@ def on_message(bot, msg):
             if not ticket: return
             while not _typing_stop.is_set():
                 try: bot.send_typing(uid, ticket)
-                except: pass
+                except Exception: pass
                 _typing_stop.wait(2.0)
         threading.Thread(target=_keep_typing, daemon=True).start()
         result = ''; sent = 0; mi = 0; last_send = 0

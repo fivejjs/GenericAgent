@@ -23,6 +23,8 @@ ui = [
     "streamlit>=1.28",
     "pywebview>=4.0",
     "textual>=0.70",
+    "PyQt6; platform_system=='Linux'",
+    "PyQt6-WebEngine; platform_system=='Linux'",
 ]
 all-frontends = [
     "python-telegram-bot>=20.0",

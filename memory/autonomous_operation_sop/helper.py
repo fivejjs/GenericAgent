@@ -114,7 +114,7 @@ def complete_task(taskname: str, historyline: str, report_path: str) -> str:
         # 回滚：把报告移回去
         try:
             shutil.move(str(dest_path), str(report))
-        except:
+        except Exception:
             pass
         return f"[ERROR] 写入 history 失败: {e}（报告已回滚）"
 

@@ -9,7 +9,7 @@ try:
     from telegram.ext import ApplicationBuilder, CallbackQueryHandler, MessageHandler, filters, ContextTypes
     from telegram.helpers import escape_markdown
     from telegram.request import HTTPXRequest
-except:
+except Exception:
     print("Please ask the agent install python-telegram-bot to use telegram module.")
     sys.exit(1)
 from chatapp_common import (

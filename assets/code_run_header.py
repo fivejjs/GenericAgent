@@ -5,7 +5,7 @@ def _d(b):
     if not b: return ''
     if isinstance(b, str): return b
     try: return b.decode()
-    except: return b.decode('gbk', 'replace')
+    except Exception: return b.decode('gbk', 'replace')
 def _run(*a, **k):
     t = k.pop('text', 0) | k.pop('universal_newlines', 0)
     enc = k.pop('encoding', None)

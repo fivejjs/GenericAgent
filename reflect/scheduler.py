@@ -56,7 +56,7 @@ def _last_run(tid, done_files):
         try:
             t = datetime.strptime(df[:15], '%Y-%m-%d_%H%M')
             if latest is None or t > latest: latest = t
-        except: continue
+        except Exception: continue
     return latest
 
 def check():

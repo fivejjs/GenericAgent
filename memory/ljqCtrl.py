@@ -17,7 +17,7 @@ dpi_scale = 1
 try:
 	from PIL import ImageGrab, Image, ImageEnhance, ImageFilter, ImageDraw
 	import cv2
-except: pass
+except Exception: pass
 
 _hdc = ctypes.windll.user32.GetDC(0)
 swidth = ctypes.windll.gdi32.GetDeviceCaps(_hdc, 118)   # DESKTOPHORZRES (物理)
